@@ -119,8 +119,11 @@ async function fileToSheets(file, onProgress) {
 
 /* --------------------------------------------------------- result frames */
 
-function buildFrames(sources, mode, trimPct) {
-  const keepH = Math.max(10, 100 - trimPct); // bottom trimPct% is discarded
+function buildFrames(sources, mode, trimPct, topTrimPct) {
+  const effTop = Math.max(0, topTrimPct);
+  const effBottom = Math.max(0, trimPct);
+  const keepH = Math.max(10, 100 - effTop - effBottom);
+
   const nameCount = {};
   sources.forEach((s) => {
     nameCount[s.name] = (nameCount[s.name] || 0) + 1;
@@ -142,15 +145,18 @@ function buildFrames(sources, mode, trimPct) {
     const base = sanitize(s.name);
     const suffix = nameCount[s.name] > 1 ? "_p" + s.page : "";
     if (mode === "halves") {
+      // Front ID usually occupies top 0-48%
+      const frontH = Math.min(48, keepH);
       frames.push(
-        mk(s, base + suffix + "_front", s.name + " · p" + s.page + " · front ID", cropCanvas(s.canvas, 0, 0, 100, Math.min(48, keepH)))
+        mk(s, base + suffix + "_front", s.name + " · p" + s.page + " · front ID", cropCanvas(s.canvas, 0, effTop, 100, frontH))
       );
-      const backH = Math.max(5, Math.min(45, keepH - 50)); // never crosses the watermark band
+      // Back ID starts at 50%
+      const backH = Math.max(5, Math.min(45, 100 - 50 - effBottom));
       frames.push(
         mk(s, base + suffix + "_back", s.name + " · p" + s.page + " · back ID", cropCanvas(s.canvas, 0, 50, 100, backH))
       );
     } else {
-      frames.push(mk(s, base + suffix, s.name + " · p" + s.page, cropCanvas(s.canvas, 0, 0, 100, keepH)));
+      frames.push(mk(s, base + suffix, s.name + " · p" + s.page, cropCanvas(s.canvas, 0, effTop, 100, keepH)));
     }
   });
 
@@ -210,6 +216,7 @@ function App() {
   const [frames, setFrames] = useState([]);
   const [mode, setMode] = useState("page"); // "page" | "halves"
   const [trimPct, setTrimPct] = useState(7); // bottom band to cut (6–8 %)
+  const [topTrimPct, setTopTrimPct] = useState(2); // top band to cut
   const [keepWatermark, setKeepWatermark] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -242,8 +249,8 @@ function App() {
       setFrames([]);
       return;
     }
-    setFrames(buildFrames(sources, mode, keepWatermark ? 0 : trimPct));
-  }, [sources, mode, trimPct, keepWatermark]);
+    setFrames(buildFrames(sources, mode, keepWatermark ? 0 : trimPct, keepWatermark ? 0 : topTrimPct));
+  }, [sources, mode, trimPct, topTrimPct, keepWatermark]);
 
   const selectAll = (v) => setFrames((prev) => prev.map((f) => ({ ...f, selected: v })));
   const toggle = (id) =>
@@ -390,6 +397,22 @@ function App() {
                   ID card halves (front + back)
                 </span>
               </label>
+            </div>
+          </div>
+
+          <div className="field">
+            <label className="title">Top Margin trim</label>
+            <div className="range-row">
+              <input
+                type="range"
+                min="0"
+                max="10"
+                step="0.5"
+                value={topTrimPct}
+                disabled={keepWatermark}
+                onChange={(e) => setTopTrimPct(parseFloat(e.target.value))}
+              />
+              <span className="range-val">{keepWatermark ? "off" : topTrimPct + "%"}</span>
             </div>
           </div>
 
